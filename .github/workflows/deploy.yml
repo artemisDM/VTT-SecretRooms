@@ -31,6 +31,9 @@ jobs:
 
       - name: Create modified VeilCast from official source
         run: |
+          # The builder also supports local launches. For Pages, this tiny
+          # placeholder satisfies its packaging step; it is removed before upload.
+          printf '%s\n' '# GitHub Pages build placeholder' > start_veilcast.py
           python3 build_veilcast_secretrooms.py
           test -f VeilCast_SecretRooms/index.html
           grep -q 'BEGIN VeilCast Secret Room Toggle' VeilCast_SecretRooms/index.html
