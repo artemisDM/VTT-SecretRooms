@@ -1,0 +1,52 @@
+name: Publish VeilCast Secret Rooms
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Read repository files
+        uses: actions/checkout@v4
+
+      - name: Set up Python for the GitHub build (not your PC)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Create modified VeilCast from official source
+        run: |
+          python3 build_veilcast_secretrooms.py
+          test -f VeilCast_SecretRooms/index.html
+          grep -q 'BEGIN VeilCast Secret Room Toggle' VeilCast_SecretRooms/index.html
+          rm -f VeilCast_SecretRooms/start_veilcast.py
+          rm -f VeilCast_SecretRooms/START_WINDOWS.bat
+          rm -f VeilCast_SecretRooms/START_MAC_LINUX.sh
+          touch VeilCast_SecretRooms/.nojekyll
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload modified website
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./VeilCast_SecretRooms
+
+      - name: Publish website
+        id: deploy
+        uses: actions/deploy-pages@v4
