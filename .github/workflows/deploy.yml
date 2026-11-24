@@ -12,44 +12,58 @@ permissions:
 
 concurrency:
   group: github-pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
-  publish:
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - name: Read repository files
         uses: actions/checkout@v4
 
-      - name: Set up Python for the GitHub build (not your PC)
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
-      - name: Create modified VeilCast from official source
+      - name: Build the modified VeilCast
+        shell: bash
         run: |
-          # The builder also supports local launches. For Pages, this tiny
-          # placeholder satisfies its packaging step; it is removed before upload.
+          set -euo pipefail
+          # The local builder expects a launcher script during packaging.
+          # Supply a placeholder only for this CI build; do not publish it.
           printf '%s\n' '# GitHub Pages build placeholder' > start_veilcast.py
           python3 build_veilcast_secretrooms.py
-          test -f VeilCast_SecretRooms/index.html
+          test -s VeilCast_SecretRooms/index.html
           grep -q 'BEGIN VeilCast Secret Room Toggle' VeilCast_SecretRooms/index.html
           rm -f VeilCast_SecretRooms/start_veilcast.py
           rm -f VeilCast_SecretRooms/START_WINDOWS.bat
           rm -f VeilCast_SecretRooms/START_MAC_LINUX.sh
           touch VeilCast_SecretRooms/.nojekyll
+          echo 'Static website created successfully.'
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
-      - name: Upload modified website
-        uses: actions/upload-pages-artifact@v3
+      - name: Upload GitHub Pages website
+        id: upload
+        uses: actions/upload-pages-artifact@v4
         with:
+          name: github-pages
           path: ./VeilCast_SecretRooms
 
+      - name: Confirm artifact upload
+        run: |
+          echo 'Uploaded artifact ID: ${{ steps.upload.outputs.artifact_id }}'
+          test -n '${{ steps.upload.outputs.artifact_id }}'
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - name: Publish website
-        id: deploy
+        id: deployment
         uses: actions/deploy-pages@v4
