@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Make a minimally changed VeilCast copy with the Secret Room Toggle.
 
+Builder v1.1: resilient single-point patch for campaign backup restoration.
+
 Run: python build_veilcast_secretrooms.py [--zip VeilCast-VTT-main.zip]
 Or:  python build_veilcast_secretrooms.py --source path/to/VeilCast-VTT
 
@@ -9,6 +11,7 @@ No third-party Python packages required.
 from __future__ import annotations
 import argparse
 import io
+import re
 from pathlib import Path
 import shutil
 import urllib.request
@@ -25,6 +28,38 @@ def replace_one(text: str, old: str, new: str, what: str) -> str:
         raise ValueError(f"Refusing to change {what}: expected one exact anchor, found {count}. "
                          "Upstream VeilCast may have changed; no patched app was produced.")
     return text.replace(old, new, 1)
+
+
+def patch_backup_import(text: str) -> str:
+    """Preserve secret artwork in restored scene metadata; fail closed if ambiguous.
+
+    The older anchor required two adjacent lines, with seven leading spaces. It
+    rejected otherwise equivalent official builds when either line was reindented
+    or the importer gained an extra assignment. We anchor to the unique *save*
+    of a newly imported `nueva` scene instead, verifying the surrounding code
+    is actually reading `sd` (the import's source scene object).
+    """
+    pattern = re.compile(r"(?m)^([ \t]*)await[ \t]+guardarEscenaMeta[ \t]*\([ \t]*nueva[ \t]*\)[ \t]*;[ \t]*$")
+    matches = list(pattern.finditer(text))
+    # There may be other handlers saving newly created scenes; do not alter them.
+    candidates = []
+    for match in matches:
+        previous = text[max(0, match.start()-1800):match.start()]
+        # VeilCast's backup importer uses sd (source scene data) and nueva
+        # (restored scene). Both are required for the new optional field.
+        if re.search(r"\bsd\s*\.", previous) and re.search(r"\bnueva\s*\.", previous):
+            candidates.append(match)
+    if len(candidates) != 1:
+        raise ValueError(
+            'Refusing to modify backup-import restoration: expected one uniquely '
+            f'identifiable imported-scene save; found {len(candidates)} '
+            f'(total guardarEscenaMeta(nueva) saves: {len(matches)}). '
+            'No modified app was produced. Please report the failure.'
+        )
+    m = candidates[0]
+    prefix = m.group(1)
+    addition = prefix + 'if(Array.isArray(sd.secretRooms)) nueva.secretRooms=sd.secretRooms;\n'
+    return text[:m.start()] + addition + text[m.start():]
 
 
 def patch(text: str, addon: str) -> str:
@@ -57,12 +92,10 @@ def patch(text: str, addon: str) -> str:
         "      walls:s.walls||[], tokens:s.tokens||{}, fogModo:s.fogModo||'manual',\n"
         "      secretRooms:s.secretRooms||[],\n      img:",
         "include overlays when exporting campaign backup")
-    text = replace_one(text,
-        "       if(sd.fogModo) nueva.fogModo=sd.fogModo;\n       await guardarEscenaMeta(nueva);",
-        "       if(sd.fogModo) nueva.fogModo=sd.fogModo;\n"
-        "       if(Array.isArray(sd.secretRooms)) nueva.secretRooms=sd.secretRooms;\n"
-        "       await guardarEscenaMeta(nueva);",
-        "restore overlays when importing campaign backup")
+    # The exact whitespace around the backup importer changes across VeilCast revisions.
+    # Insert one optional property assignment immediately before saving the *newly
+    # imported* scene.  Never monkey-patch the unrelated map/fog saving functions.
+    text = patch_backup_import(text)
     # Add DM-only floating panel, after VeilCast starts its existing app init.
     text = replace_one(text,
         "arrancar();\n})();",
