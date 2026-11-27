@@ -1,9 +1,15 @@
 name: Publish VeilCast Secret Rooms
 
 on:
-  push:
-    branches: [main]
+  # Deliberately manual-only: uploading the upgrade files will NOT republish
+  # or touch the currently working Secret Rooms website.
   workflow_dispatch:
+    inputs:
+      enable_combat_tokens:
+        description: 'Enable experimental combat-tracker map tokens? (No = rollback to Secret Rooms only)'
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -26,35 +32,55 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Build the modified VeilCast
+      - name: Build Secret Rooms (existing feature)
         shell: bash
         run: |
           set -euo pipefail
-          # The local builder expects a launcher script during packaging.
-          # Supply a placeholder only for this CI build; do not publish it.
           printf '%s\n' '# GitHub Pages build placeholder' > start_veilcast.py
           python3 build_veilcast_secretrooms.py
           test -s VeilCast_SecretRooms/index.html
           grep -q 'BEGIN VeilCast Secret Room Toggle' VeilCast_SecretRooms/index.html
+
+      - name: Test combat-token patch without modifying the website
+        if: ${{ inputs.enable_combat_tokens == true }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 test_upgrade.py
+          python3 add_combat_tokens.py --check-only
+          node --check combat_tokens_feature.js
+
+      - name: Apply combat-token patch ONLY when explicitly enabled
+        if: ${{ inputs.enable_combat_tokens == true }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 add_combat_tokens.py
+          grep -q 'BEGIN VeilCast Combat Tracker Map Tokens' VeilCast_SecretRooms/index.html
+          grep -q 'BEGIN VeilCast Secret Room Toggle' VeilCast_SecretRooms/index.html
+
+      - name: Remove local-only launchers
+        shell: bash
+        run: |
+          set -euo pipefail
           rm -f VeilCast_SecretRooms/start_veilcast.py
           rm -f VeilCast_SecretRooms/START_WINDOWS.bat
           rm -f VeilCast_SecretRooms/START_MAC_LINUX.sh
           touch VeilCast_SecretRooms/.nojekyll
-          echo 'Static website created successfully.'
 
-      - name: Configure GitHub Pages
+      - name: Configure Pages
         uses: actions/configure-pages@v5
 
-      - name: Upload GitHub Pages website
+      - name: Upload website
         id: upload
         uses: actions/upload-pages-artifact@v4
         with:
           name: github-pages
           path: ./VeilCast_SecretRooms
 
-      - name: Confirm artifact upload
+      - name: Verify uploaded artifact
         run: |
-          echo 'Uploaded artifact ID: ${{ steps.upload.outputs.artifact_id }}'
+          echo "Artifact ID: ${{ steps.upload.outputs.artifact_id }}"
           test -n '${{ steps.upload.outputs.artifact_id }}'
 
   deploy:
