@@ -8,6 +8,11 @@ on:
         required: true
         type: boolean
         default: false
+      enable_player_colors:
+        description: 'Add a character-color picker to native New Player and Multi Add dialogs?'
+        required: true
+        type: boolean
+        default: false
       enable_multi_add:
         description: 'Include the experimental Multi Add campaign players button?'
         required: true
@@ -69,6 +74,16 @@ jobs:
           grep -q 'BEGIN VeilCast Secret Room Toggle' VeilCast_SecretRooms/index.html
           ! grep -q 'BEGIN VeilCast Combat Tracker Map Tokens' VeilCast_SecretRooms/index.html
           ! grep -q 'BEGIN VeilCast Monster Manager' VeilCast_SecretRooms/index.html
+      - name: Add native player color picker (optional)
+        if: ${{ inputs.enable_player_colors == true }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check player_color_feature.js
+          python3 test_player_colors.py
+          python3 add_player_colors.py --check-only
+          python3 add_player_colors.py
+          grep -q 'BEGIN VeilCast Campaign Player Color Picker' VeilCast_SecretRooms/index.html
       - name: Strip local launchers, preserve upstream LICENSE
         shell: bash
         run: |
