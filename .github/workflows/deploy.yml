@@ -4,15 +4,6 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      enable_monsters:
-        description: 'Add Monster Manager? Choose no to deploy the original Secret Rooms-only site.'
-        required: true
-        default: 'yes'
-        type: choice
-        options:
-          - 'yes'
-          - 'no'
 
 permissions:
   contents: read
@@ -35,45 +26,21 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Validate new Monster Manager syntax
-        run: node --check monster_manager_feature.js
-
-      - name: Build the existing Secret Rooms VeilCast (unchanged)
+      - name: Build the modified VeilCast
         shell: bash
         run: |
           set -euo pipefail
+          # The local builder expects a launcher script during packaging.
+          # Supply a placeholder only for this CI build; do not publish it.
           printf '%s\n' '# GitHub Pages build placeholder' > start_veilcast.py
           python3 build_veilcast_secretrooms.py
           test -s VeilCast_SecretRooms/index.html
           grep -q 'BEGIN VeilCast Secret Room Toggle' VeilCast_SecretRooms/index.html
-          echo 'Existing Secret Rooms functionality present.'
-
-      - name: Verify and add Monster Manager (skip when doing rollback)
-        shell: bash
-        env:
-          MONSTERS_INPUT: ${{ inputs.enable_monsters }}
-        run: |
-          set -euo pipefail
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "$MONSTERS_INPUT" == "no" ]]; then
-            echo 'ROLLBACK MODE: Leaving working Secret Rooms-only website unchanged.'
-          else
-            python3 add_monster_manager.py --check-only
-            python3 add_monster_manager.py
-            grep -q 'BEGIN VeilCast Monster Manager' VeilCast_SecretRooms/index.html
-            grep -q 'initSecretRooms();' VeilCast_SecretRooms/index.html
-            grep -q 'initMonsterManager();' VeilCast_SecretRooms/index.html
-            echo 'Both Secret Rooms and Monster Manager installed.'
-          fi
-
-      - name: Prepare static website
-        shell: bash
-        run: |
-          set -euo pipefail
           rm -f VeilCast_SecretRooms/start_veilcast.py
           rm -f VeilCast_SecretRooms/START_WINDOWS.bat
           rm -f VeilCast_SecretRooms/START_MAC_LINUX.sh
           touch VeilCast_SecretRooms/.nojekyll
-          test -s VeilCast_SecretRooms/index.html
+          echo 'Static website created successfully.'
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
@@ -86,7 +53,6 @@ jobs:
           path: ./VeilCast_SecretRooms
 
       - name: Confirm artifact upload
-        shell: bash
         run: |
           echo 'Uploaded artifact ID: ${{ steps.upload.outputs.artifact_id }}'
           test -n '${{ steps.upload.outputs.artifact_id }}'
