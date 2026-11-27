@@ -1,12 +1,10 @@
 name: Publish VeilCast Secret Rooms
 
 on:
-  # Deliberately manual-only: uploading the upgrade files will NOT republish
-  # or touch the currently working Secret Rooms website.
   workflow_dispatch:
     inputs:
-      enable_combat_tokens:
-        description: 'Enable experimental combat-tracker map tokens? (No = rollback to Secret Rooms only)'
+      enable_fog_exclusion:
+        description: 'Enable per-token Exclude from fog toggle? (No = Secret Rooms only)'
         required: true
         type: boolean
         default: false
@@ -24,42 +22,33 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Read repository files
+      - name: Checkout website source
         uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
-      - name: Build Secret Rooms (existing feature)
+      - name: Build working Secret Rooms (without combat token modification)
         shell: bash
         run: |
           set -euo pipefail
-          printf '%s\n' '# GitHub Pages build placeholder' > start_veilcast.py
+          printf '%s\n' '# GitHub Pages placeholder' > start_veilcast.py
           python3 build_veilcast_secretrooms.py
           test -s VeilCast_SecretRooms/index.html
           grep -q 'BEGIN VeilCast Secret Room Toggle' VeilCast_SecretRooms/index.html
-
-      - name: Test combat-token patch without modifying the website
-        if: ${{ inputs.enable_combat_tokens == true }}
+          ! grep -q 'BEGIN VeilCast Combat Tracker Map Tokens' VeilCast_SecretRooms/index.html
+          ! grep -q 'BEGIN VeilCast Monster Manager' VeilCast_SecretRooms/index.html
+      - name: Apply fog toggle only when explicitly requested
+        if: ${{ inputs.enable_fog_exclusion == true }}
         shell: bash
         run: |
           set -euo pipefail
-          python3 test_upgrade.py
-          python3 add_combat_tokens.py --check-only
-          node --check combat_tokens_feature.js
-
-      - name: Apply combat-token patch ONLY when explicitly enabled
-        if: ${{ inputs.enable_combat_tokens == true }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 add_combat_tokens.py
-          grep -q 'BEGIN VeilCast Combat Tracker Map Tokens' VeilCast_SecretRooms/index.html
+          python3 add_fog_exclusion.py --check-only
+          python3 add_fog_exclusion.py
+          grep -q 'BEGIN VeilCast Per-Token Fog Exclusion Toggle' VeilCast_SecretRooms/index.html
           grep -q 'BEGIN VeilCast Secret Room Toggle' VeilCast_SecretRooms/index.html
-
-      - name: Remove local-only launchers
+          ! grep -q 'BEGIN VeilCast Combat Tracker Map Tokens' VeilCast_SecretRooms/index.html
+      - name: Strip local launchers (keep license)
         shell: bash
         run: |
           set -euo pipefail
@@ -67,29 +56,26 @@ jobs:
           rm -f VeilCast_SecretRooms/START_WINDOWS.bat
           rm -f VeilCast_SecretRooms/START_MAC_LINUX.sh
           touch VeilCast_SecretRooms/.nojekyll
-
       - name: Configure Pages
         uses: actions/configure-pages@v5
-
-      - name: Upload website
+      - name: Upload Pages artifact
         id: upload
         uses: actions/upload-pages-artifact@v4
         with:
           name: github-pages
           path: ./VeilCast_SecretRooms
-
-      - name: Verify uploaded artifact
+      - name: Check artifact upload
         run: |
-          echo "Artifact ID: ${{ steps.upload.outputs.artifact_id }}"
+          echo 'Artifact ID: ${{ steps.upload.outputs.artifact_id }}'
           test -n '${{ steps.upload.outputs.artifact_id }}'
 
   deploy:
-    runs-on: ubuntu-latest
     needs: build
+    runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Publish website
+      - name: Deploy site
         id: deployment
         uses: actions/deploy-pages@v4
