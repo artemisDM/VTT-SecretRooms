@@ -4,7 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       enable_fog_exclusion:
-        description: 'Enable per-token Exclude from fog toggle? (No = Secret Rooms only)'
+        description: 'Include the Exclude from fog checkbox?'
+        required: true
+        type: boolean
+        default: false
+      enable_multi_add:
+        description: 'Include the experimental Multi Add campaign players button?'
         required: true
         type: boolean
         default: false
@@ -28,7 +33,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Build working Secret Rooms (without combat token modification)
+      - name: Build unmodified VeilCast plus existing Secret Rooms
         shell: bash
         run: |
           set -euo pipefail
@@ -38,7 +43,7 @@ jobs:
           grep -q 'BEGIN VeilCast Secret Room Toggle' VeilCast_SecretRooms/index.html
           ! grep -q 'BEGIN VeilCast Combat Tracker Map Tokens' VeilCast_SecretRooms/index.html
           ! grep -q 'BEGIN VeilCast Monster Manager' VeilCast_SecretRooms/index.html
-      - name: Apply fog toggle only when explicitly requested
+      - name: Add existing Fog Exclusion only when requested
         if: ${{ inputs.enable_fog_exclusion == true }}
         shell: bash
         run: |
@@ -46,15 +51,32 @@ jobs:
           python3 add_fog_exclusion.py --check-only
           python3 add_fog_exclusion.py
           grep -q 'BEGIN VeilCast Per-Token Fog Exclusion Toggle' VeilCast_SecretRooms/index.html
+      - name: Test Multi Add source patch and syntax
+        if: ${{ inputs.enable_multi_add == true }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check multi_add_feature.js
+          python3 test_multi_add.py
+      - name: Add Multi Add only when requested
+        if: ${{ inputs.enable_multi_add == true }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 add_multi_add.py --check-only
+          python3 add_multi_add.py
+          grep -q 'BEGIN VeilCast Native Campaign Player Multi Add' VeilCast_SecretRooms/index.html
           grep -q 'BEGIN VeilCast Secret Room Toggle' VeilCast_SecretRooms/index.html
           ! grep -q 'BEGIN VeilCast Combat Tracker Map Tokens' VeilCast_SecretRooms/index.html
-      - name: Strip local launchers (keep license)
+          ! grep -q 'BEGIN VeilCast Monster Manager' VeilCast_SecretRooms/index.html
+      - name: Strip local launchers, preserve upstream LICENSE
         shell: bash
         run: |
           set -euo pipefail
           rm -f VeilCast_SecretRooms/start_veilcast.py
           rm -f VeilCast_SecretRooms/START_WINDOWS.bat
           rm -f VeilCast_SecretRooms/START_MAC_LINUX.sh
+          test -s VeilCast_SecretRooms/LICENSE
           touch VeilCast_SecretRooms/.nojekyll
       - name: Configure Pages
         uses: actions/configure-pages@v5
@@ -65,6 +87,7 @@ jobs:
           name: github-pages
           path: ./VeilCast_SecretRooms
       - name: Check artifact upload
+        shell: bash
         run: |
           echo 'Artifact ID: ${{ steps.upload.outputs.artifact_id }}'
           test -n '${{ steps.upload.outputs.artifact_id }}'
