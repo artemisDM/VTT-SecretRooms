@@ -1,4 +1,4 @@
-/* BEGIN VeilCast Native Campaign Player Multi Add (v1)
+/* BEGIN VeilCast Native Campaign Player Multi Add (v1.1 — prefix numbering)
  * Additive UI adapter. Uses the existing New Player form and its original
  * Save handler for EACH newly created character. The existing player model,
  * persistence, fog, rendering, tokens, combat tracker, and Secret Rooms stay
@@ -48,7 +48,7 @@ function initVeilCastMultiAdd(){
   row.append(label,run);
   const info=document.createElement('div');
   info.style.cssText='font-size:11px;opacity:.8;margin-top:7px;line-height:1.4';
-  info.textContent='Enter the base Character name and stats above. Copies inherit those fields and are named “Name - 1”, “Name - 2”, etc. Regular Save still creates one character.';
+  info.textContent='Enter the base Character name and stats above. Copies inherit those fields and are named “1 Name”, “2 Name”, etc. Regular Save still creates one character.';
   controls.append(title,row,info);
   buttons.insertAdjacentElement('beforebegin',controls);
 
@@ -115,7 +115,7 @@ function initVeilCastMultiAdd(){
     }
     const saver=nativeSave();
     if(!saver){report('Cannot locate the original Save button. Nothing created.',true);return;}
-    const names=Array.from({length:amount},(_,i)=>base+' - '+(i+1));
+    const names=Array.from({length:amount},(_,i)=>(i+1)+' '+base);
     const collisions=names.filter(n=>existingNames().has(n.toLocaleLowerCase()));
     if(collisions.length){
       alert('These characters already exist: '+collisions.join(', ')+'. Rename the base or delete the originals first.');
